@@ -1,7 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PlayCircle } from 'lucide-react';
+import DiagnosticModal from '../components/DiagnosticModal';
 
 function Diagnostico() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
   return (
     <div>
       <div className="bg-zinc-900 rounded-lg p-8 mb-6">
@@ -23,12 +26,20 @@ function Diagnostico() {
             <li>Cultura e pessoas</li>
             <li>Experiência do cliente</li>
           </ul>
-          <button className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center gap-2 transition-colors">
+          <button 
+            onClick={() => setIsModalOpen(true)}
+            className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-3 px-6 rounded-lg flex items-center gap-2 transition-colors"
+          >
             <PlayCircle size={20} />
             Iniciar Diagnóstico
           </button>
         </div>
       </div>
+
+      <DiagnosticModal 
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+      />
     </div>
   );
 }
