@@ -2,9 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Settings, User, Shield, Camera, Loader2 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { useStorage } from '../hooks/useStorage';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
-import { db } from '../config/firebase';
-import { updateEmail, updatePassword, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth';
+import { supabase } from '../config/supabase';
 
 interface UserProfile {
   fullName: string;
@@ -39,11 +37,21 @@ function Configuracoes() {
     if (!user) return;
     
     try {
-      const docRef = doc(db, 'users', user.uid);
-      const docSnap = await getDoc(docRef);
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      if (error) throw error;
       
-      if (docSnap.exists()) {
-        setProfile(docSnap.data() as UserProfile);
+      if (data) {
+        setProfile({
+          fullName: data.full_name || '',
+          phone: data.phone || '',
+          position: data.position || '',
+          photoURL: data.photo_url || ''
+        });
       }
     } catch (error) {
       console.error('Erro ao carregar perfil:', error);
@@ -56,13 +64,15 @@ function Configuracoes() {
 
     try {
       setLoading(true);
-      const path = `profile-photos/${user.uid}/${file.name}`;
+      const path = `profile-photos/${user.id}/${file.name}`;
       const photoURL = await uploadFile(file, path);
       
-      await setDoc(doc(db, 'users', user.uid), {
-        ...profile,
-        photoURL
-      }, { merge: true });
+      const { error } = await supabase
+        .from('users')
+        .update({ photo_url: photoURL })
+        .eq('id', user.id);
+
+      if (error) throw error;
 
       setProfile(prev => ({ ...prev, photoURL }));
       setMessage({ type: 'success', text: 'Foto atualizada com sucesso!' });
@@ -79,7 +89,16 @@ function Configuracoes() {
 
     try {
       setLoading(true);
-      await setDoc(doc(db, 'users', user.uid), profile, { merge: true });
+      const { error } = await supabase
+        .from('users')
+        .update({
+          full_name: profile.fullName,
+          phone: profile.phone,
+          position: profile.position
+        })
+        .eq('id', user.id);
+
+      if (error) throw error;
       setMessage({ type: 'success', text: 'Perfil atualizado com sucesso!' });
     } catch (error) {
       setMessage({ type: 'error', text: 'Erro ao atualizar perfil.' });
@@ -90,13 +109,15 @@ function Configuracoes() {
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !user.email) return;
+    if (!user) return;
 
     try {
       setLoading(true);
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
-      await updatePassword(user, newPassword);
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+
+      if (error) throw error;
       
       setMessage({ type: 'success', text: 'Senha atualizada com sucesso!' });
       setCurrentPassword('');
@@ -110,13 +131,15 @@ function Configuracoes() {
 
   const handleEmailChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !user.email) return;
+    if (!user) return;
 
     try {
       setLoading(true);
-      const credential = EmailAuthProvider.credential(user.email, currentPassword);
-      await reauthenticateWithCredential(user, credential);
-      await updateEmail(user, newEmail);
+      const { error } = await supabase.auth.updateUser({
+        email: newEmail
+      });
+
+      if (error) throw error;
       
       setMessage({ type: 'success', text: 'E-mail atualizado com sucesso!' });
       setCurrentPassword('');
