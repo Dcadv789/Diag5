@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { BarChart3, TrendingUp, Award, ChevronDown, ChevronUp, Trash2, ThumbsUp, ThumbsDown, Lightbulb } from 'lucide-react';
-import { useDiagnosticCalculation } from '../hooks/useDiagnosticCalculation';
+import { useResults } from '../hooks/useResults';
 import ExportPDF from '../components/ExportPDF';
-import ExportPDF2 from '../components/ExportPDF2';
 import type { DiagnosticResult, PillarScore } from '../types/diagnostic';
 
 function getRecommendation(score: number): string {
@@ -15,7 +14,7 @@ function getRecommendation(score: number): string {
   }
 }
 
-function DiagnosticCard({ result, onDelete }: { result: DiagnosticResult; onDelete: (id: string) => void }) {
+function DiagnosticCard({ result, onDelete }: { result: DiagnosticResult; onDelete: (firebaseId: string) => void }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const maturityLevel = getMaturityLevel(Math.round(result.totalScore));
   const { best, worst } = getBestAndWorstPillars(result.pillarScores);
@@ -36,12 +35,9 @@ function DiagnosticCard({ result, onDelete }: { result: DiagnosticResult; onDele
             <p className="text-sm text-gray-400">Pontuação</p>
             <p className="text-xl font-bold text-white">{Math.round(result.totalScore)} pontos</p>
           </div>
-          <div className="flex gap-2">
-            <ExportPDF result={result} />
-            <ExportPDF2 result={result} />
-          </div>
+          <ExportPDF result={result} />
           <button
-            onClick={() => onDelete(result.id)}
+            onClick={() => onDelete(result.firebaseId!)}
             className="p-2 hover:bg-zinc-700 rounded-lg transition-colors text-red-500 hover:text-red-400"
           >
             <Trash2 size={20} />
@@ -270,13 +266,38 @@ function getMaturityLevel(score: number): {
 }
 
 function Resultados() {
-  const { results, setResults } = useDiagnosticCalculation();
+  const { results, loading, error, deleteResult } = useResults();
   const [isLatestExpanded, setIsLatestExpanded] = useState(false);
-  const latestResult = results[results.length - 1];
+  const latestResult = results[0]; // Assuming results are ordered by date desc
 
-  const handleDelete = (id: string) => {
-    setResults(results.filter(result => result.id !== id));
+  const handleDelete = async (firebaseId: string) => {
+    if (!firebaseId) return;
+    
+    if (window.confirm('Tem certeza que deseja excluir este diagnóstico?')) {
+      try {
+        await deleteResult(firebaseId);
+      } catch (error) {
+        console.error('Erro ao excluir resultado:', error);
+        alert('Erro ao excluir resultado. Tente novamente.');
+      }
+    }
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-red-500/20 text-red-400 p-4 rounded-lg">
+        {error}
+      </div>
+    );
+  }
 
   if (!latestResult) {
     return (
@@ -334,12 +355,9 @@ function Resultados() {
                     {Math.round(latestResult.totalScore)} pontos
                   </p>
                 </div>
-                <div className="flex gap-2">
-                  <ExportPDF result={latestResult} />
-                  <ExportPDF2 result={latestResult} />
-                </div>
+                <ExportPDF result={latestResult} />
                 <button
-                  onClick={() => handleDelete(latestResult.id)}
+                  onClick={() => handleDelete(latestResult.firebaseId!)}
                   className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-red-500 hover:text-red-400"
                 >
                   <Trash2 size={24} />
@@ -549,7 +567,7 @@ function Resultados() {
           <div className="bg-zinc-900 rounded-lg p-8">
             <h2 className="text-2xl font-semibold text-white mb-6">Histórico de Diagnósticos</h2>
             <div className="space-y-4">
-              {results.slice(0, -1).reverse().map((result) => (
+              {results.slice(1).map((result) => (
                 <DiagnosticCard key={result.id} result={result} onDelete={handleDelete} />
               ))}
             </div>

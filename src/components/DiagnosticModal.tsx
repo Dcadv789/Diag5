@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Stethoscope, X, ArrowRight, ArrowLeft } from 'lucide-react';
-import useLocalStorage from '../hooks/useLocalStorage';
-import { useDiagnosticCalculation } from '../hooks/useDiagnosticCalculation';
-import type { CompanyData, Pillar, Question } from '../types/diagnostic';
+import { useSettings } from '../hooks/useSettings';
+import { usePillars } from '../hooks/usePillars';
+import { useResults } from '../hooks/useResults';
+import { Particles } from './Particles';
+import type { CompanyData, Question } from '../types/diagnostic';
 
 interface DiagnosticModalProps {
   isOpen: boolean;
@@ -46,9 +48,10 @@ const FORMAS_JURIDICAS = [
 function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
   const [step, setStep] = useState<'form' | 'questions'>('form');
   const [currentPillarIndex, setCurrentPillarIndex] = useState(0);
-  const [pillars] = useLocalStorage<Pillar[]>('pillars', []);
+  const { pillars } = usePillars();
+  const { saveResult } = useResults();
+  const { settings } = useSettings();
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const { saveDiagnosticResult } = useDiagnosticCalculation();
   const [companyData, setCompanyData] = useState<CompanyData>({
     nome: '',
     empresa: '',
@@ -108,13 +111,53 @@ function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
     setDisplayFaturamento('R$ ');
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (step === 'form') {
       setStep('questions');
     } else {
-      const result = saveDiagnosticResult(companyData, answers, pillars);
-      console.log('Diagnóstico finalizado:', result);
-      onClose();
+      try {
+        const pillarScores = pillars.map(pillar => {
+          let score = 0;
+          let maxPossibleScore = 0;
+
+          pillar.questions.forEach(question => {
+            const answer = answers[question.id];
+            maxPossibleScore += question.points;
+
+            if (answer === question.positiveAnswer) {
+              score += question.points;
+            } else if (answer === 'PARCIALMENTE') {
+              score += question.points / 2;
+            }
+          });
+
+          return {
+            pillarId: pillar.id,
+            pillarName: pillar.name,
+            score,
+            maxPossibleScore,
+            percentageScore: (score / maxPossibleScore) * 100
+          };
+        });
+
+        const totalScore = pillarScores.reduce((sum, pillar) => sum + pillar.score, 0);
+        const maxPossibleScore = pillarScores.reduce((sum, pillar) => sum + pillar.maxPossibleScore, 0);
+
+        await saveResult({
+          date: new Date().toISOString(),
+          companyData,
+          answers,
+          pillarScores,
+          totalScore,
+          maxPossibleScore,
+          percentageScore: (totalScore / maxPossibleScore) * 100
+        });
+
+        onClose();
+      } catch (error) {
+        console.error('Erro ao salvar resultado:', error);
+        alert('Erro ao salvar o diagnóstico. Tente novamente.');
+      }
     }
   };
 
@@ -155,8 +198,18 @@ function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-zinc-900 rounded-lg w-full max-w-4xl">
+    <div className="fixed inset-0 flex items-center justify-center p-4 z-50">
+      <div className="absolute inset-0 bg-black">
+        <Particles
+          className="absolute inset-0"
+          quantity={100}
+          staticity={50}
+          ease={50}
+          size={0.8}
+          color="#ffffff"
+        />
+      </div>
+      <div className="bg-zinc-900 rounded-lg w-full max-w-4xl relative">
         <div className="bg-zinc-800 p-6 border-b border-zinc-700 flex justify-between items-center rounded-t-lg">
           <div className="flex items-start gap-4">
             <Stethoscope size={32} className="text-blue-500 mt-1" />
@@ -176,15 +229,17 @@ function DiagnosticModal({ isOpen, onClose }: DiagnosticModalProps) {
             </div>
           </div>
           <div className="flex items-center gap-4">
-            <div className="text-right">
-              <p className="text-sm text-gray-400">powered by</p>
-              <div className="flex items-center gap-2">
-                <span className="text-white font-semibold">CompanyName</span>
-                <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
-                  <span className="text-white font-bold">C</span>
-                </div>
+            {settings?.logo ? (
+              <img
+                src={settings.logo}
+                alt="Logo da empresa"
+                className="w-45 h-24 object-contain"
+              />
+            ) : (
+              <div className="w-32 h-16 bg-zinc-700 rounded-lg flex items-center justify-center">
+                <span className="text-zinc-500">Logo</span>
               </div>
-            </div>
+            )}
             <button
               onClick={onClose}
               className="text-gray-400 hover:text-white transition-colors"
