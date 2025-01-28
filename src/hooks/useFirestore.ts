@@ -1,89 +1,85 @@
-import { supabase } from '../config/supabase';
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  query,
+  where,
+  orderBy,
+  DocumentData,
+  QueryConstraint
+} from 'firebase/firestore';
+import { db } from '../config/firebase';
 
-export function useFirestore(tableName: string) {
+export function useFirestore(collectionName: string) {
   const getAll = async () => {
     try {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*');
-
-      if (error) throw error;
-      return data;
+      const querySnapshot = await getDocs(collection(db, collectionName));
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
     } catch (error) {
-      console.error('Erro ao buscar registros:', error);
       throw error;
     }
   };
 
   const getById = async (id: string) => {
     try {
-      const { data, error } = await supabase
-        .from(tableName)
-        .select('*')
-        .eq('id', id)
-        .single();
-
-      if (error) throw error;
-      return data;
+      const docRef = doc(db, collectionName, id);
+      const docSnap = await getDoc(docRef);
+      
+      if (docSnap.exists()) {
+        return {
+          id: docSnap.id,
+          ...docSnap.data()
+        };
+      }
+      return null;
     } catch (error) {
-      console.error('Erro ao buscar registro:', error);
       throw error;
     }
   };
 
-  const add = async (data: any) => {
+  const add = async (data: DocumentData) => {
     try {
-      const { data: result, error } = await supabase
-        .from(tableName)
-        .insert(data)
-        .select()
-        .single();
-
-      if (error) throw error;
-      return result.id;
+      const docRef = await addDoc(collection(db, collectionName), data);
+      return docRef.id;
     } catch (error) {
-      console.error('Erro ao adicionar registro:', error);
       throw error;
     }
   };
 
-  const update = async (id: string, data: any) => {
+  const update = async (id: string, data: DocumentData) => {
     try {
-      const { error } = await supabase
-        .from(tableName)
-        .update(data)
-        .eq('id', id);
-
-      if (error) throw error;
+      const docRef = doc(db, collectionName, id);
+      await updateDoc(docRef, data);
     } catch (error) {
-      console.error('Erro ao atualizar registro:', error);
       throw error;
     }
   };
 
   const remove = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from(tableName)
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      const docRef = doc(db, collectionName, id);
+      await deleteDoc(docRef);
     } catch (error) {
-      console.error('Erro ao remover registro:', error);
       throw error;
     }
   };
 
-  const query = async (queryFn: (query: any) => any) => {
+  const queryDocuments = async (...queryConstraints: QueryConstraint[]) => {
     try {
-      const baseQuery = supabase.from(tableName).select('*');
-      const { data, error } = await queryFn(baseQuery);
-
-      if (error) throw error;
-      return data;
+      const q = query(collection(db, collectionName), ...queryConstraints);
+      const querySnapshot = await getDocs(q);
+      return querySnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      }));
     } catch (error) {
-      console.error('Erro ao consultar registros:', error);
       throw error;
     }
   };
@@ -94,6 +90,8 @@ export function useFirestore(tableName: string) {
     add,
     update,
     remove,
-    query
+    queryDocuments,
+    where,
+    orderBy
   };
 }

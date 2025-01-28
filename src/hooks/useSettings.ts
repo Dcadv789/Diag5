@@ -1,62 +1,54 @@
 import { useState, useEffect } from 'react';
-import { supabase } from '../config/supabase';
+import { supabase } from '../lib/supabase';
 
 interface Settings {
-  logo_url?: string;
-  navbar_logo_url?: string;
+  id: string;
+  logo: string | null;
+  navbar_logo: string | null;
 }
 
 export function useSettings() {
-  const [settings, setSettings] = useState<Settings>({});
+  const [settings, setSettings] = useState<Settings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchSettings = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('settings')
-          .select('*')
-          .single();
-
-        if (error) throw error;
-        setSettings(data || {});
-      } catch (err) {
-        console.error('Erro ao carregar configurações:', err);
-        setError('Erro ao carregar configurações');
-      } finally {
-        setLoading(false);
-      }
-    };
-
     fetchSettings();
-
-    // Subscribe to realtime changes
-    const subscription = supabase
-      .channel('settings_changes')
-      .on('postgres_changes', 
-        { event: '*', schema: 'public', table: 'settings' },
-        (payload) => {
-          setSettings(payload.new as Settings);
-        }
-      )
-      .subscribe();
-
-    return () => {
-      subscription.unsubscribe();
-    };
   }, []);
+
+  const fetchSettings = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .single();
+
+      if (error) throw error;
+
+      setSettings(data);
+    } catch (err) {
+      console.error('Erro ao carregar configurações:', err);
+      setError('Erro ao carregar configurações');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const updateSettings = async (newSettings: Partial<Settings>) => {
     try {
+      if (!settings?.id) throw new Error('ID das configurações não encontrado');
+
       const { error } = await supabase
         .from('settings')
-        .upsert({ id: 1, ...newSettings });
+        .update(newSettings)
+        .eq('id', settings.id);
 
       if (error) throw error;
+
+      setSettings(prev => prev ? { ...prev, ...newSettings } : null);
     } catch (err) {
       console.error('Erro ao atualizar configurações:', err);
-      throw new Error('Erro ao atualizar configurações');
+      throw err;
     }
   };
 
@@ -64,6 +56,7 @@ export function useSettings() {
     settings,
     loading,
     error,
-    updateSettings
+    updateSettings,
+    refetch: fetchSettings
   };
 }

@@ -1,67 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Settings, LogOut } from 'lucide-react';
-import { useAuth } from '../hooks/useAuth';
+import { Settings, LogOut, ChevronDown, ChevronUp } from 'lucide-react';
+import { supabase } from '../lib/supabase';
+import { AuthContext } from '../App';
 
 function UserNavbar() {
   const [isOpen, setIsOpen] = useState(false);
+  const [userEmail, setUserEmail] = useState('');
+  const [userName, setUserName] = useState('');
+  const [navbarLogo, setNavbarLogo] = useState<string | null>(null);
   const navigate = useNavigate();
-  const { user, signOut } = useAuth();
+  const auth = React.useContext(AuthContext);
 
-  const handleSignOut = async () => {
-    try {
-      await signOut();
-      navigate('/');
-    } catch (error) {
-      console.error('Erro ao sair:', error);
-    }
+  useEffect(() => {
+    const getUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.email) {
+        setUserEmail(user.email);
+        setUserName(user.user_metadata?.name || '');
+      }
+    };
+
+    const getSettings = async () => {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('navbar_logo')
+        .single();
+
+      if (!error && data) {
+        setNavbarLogo(data.navbar_logo);
+      }
+    };
+
+    getUser();
+    getSettings();
+  }, []);
+
+  const handleLogout = () => {
+    auth?.logout();
+    navigate('/login');
   };
 
   return (
     <div className="relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 hover:bg-zinc-800 p-2 rounded-lg transition-colors"
+        className="flex items-center gap-3 bg-zinc-800 rounded-lg px-3 py-2 transition-colors hover:bg-zinc-700"
       >
-        <div className="w-10 h-10 rounded-full bg-blue-600 flex items-center justify-center text-white font-medium">
-          {user?.email?.[0].toUpperCase() || 'U'}
+        <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
+          <span className="text-sm font-medium text-white">
+            {userName ? userName.charAt(0).toUpperCase() : userEmail.charAt(0).toUpperCase()}
+          </span>
         </div>
         <div className="text-left">
-          <p className="text-white text-sm font-medium line-clamp-1">
-            {user?.email?.split('@')[0] || 'Usuário'}
+          <p className="text-sm font-medium text-white">
+            {userName || 'Usuário'}
           </p>
-          <p className="text-gray-400 text-xs line-clamp-1">
-            {user?.email || 'usuario@email.com'}
-          </p>
+          <p className="text-xs text-gray-400">{userEmail}</p>
         </div>
+        {isOpen ? (
+          <ChevronUp className="text-gray-400" size={20} />
+        ) : (
+          <ChevronDown className="text-gray-400" size={20} />
+        )}
       </button>
 
       {isOpen && (
-        <>
-          <div
-            className="fixed inset-0 z-10"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="absolute right-0 mt-2 w-48 bg-zinc-800 rounded-lg shadow-lg py-1 z-20">
-            <button
-              onClick={() => {
-                navigate('/configuracoes');
-                setIsOpen(false);
-              }}
-              className="w-full px-4 py-2 text-sm text-gray-300 hover:bg-zinc-700 flex items-center gap-2"
-            >
-              <Settings size={16} />
-              Configurações
-            </button>
-            <button
-              onClick={handleSignOut}
-              className="w-full px-4 py-2 text-sm text-red-400 hover:bg-zinc-700 flex items-center gap-2"
-            >
-              <LogOut size={16} />
-              Sair
-            </button>
-          </div>
-        </>
+        <div className="absolute right-0 mt-2 w-48 bg-zinc-800 rounded-lg shadow-lg py-1 z-50">
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              navigate('/configuracoes');
+            }}
+            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-300 hover:bg-zinc-700 transition-colors"
+          >
+            <Settings size={16} />
+            Configurações
+          </button>
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              handleLogout();
+            }}
+            className="flex items-center gap-2 w-full px-4 py-2 text-sm text-gray-300 hover:bg-zinc-700 transition-colors"
+          >
+            <LogOut size={16} />
+            Sair
+          </button>
+        </div>
       )}
     </div>
   );

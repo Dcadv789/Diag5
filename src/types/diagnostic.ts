@@ -13,7 +13,6 @@ export interface CompanyData {
 
 export interface DiagnosticResult {
   id: string;
-  firebaseId?: string;
   date: string;
   companyData: CompanyData;
   answers: Record<string, string>;
@@ -41,7 +40,6 @@ export interface Question {
 
 export interface Pillar {
   id: number;
-  firebaseId?: string;
   name: string;
   questions: Question[];
 }

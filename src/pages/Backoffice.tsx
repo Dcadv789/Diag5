@@ -1,105 +1,253 @@
-import React, { useState } from 'react';
-import { Plus, PlusCircle, Pencil, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
-import { usePillars } from '../hooks/usePillars';
+import React, { useState, useEffect } from 'react';
+import { Plus, PlusCircle, Pencil, Trash2 } from 'lucide-react';
 import LogoUpload from '../components/LogoUpload';
-import type { Question, Pillar } from '../types/diagnostic';
+import { supabase } from '../lib/supabase';
+
+interface Question {
+  id: string;
+  text: string;
+  points: number;
+  positiveAnswer: 'SIM' | 'NÃO';
+  answerType: 'BINARY' | 'TERNARY';
+  order: number;
+}
+
+interface Pillar {
+  id: string;
+  name: string;
+  order: number;
+  questions: Question[];
+}
 
 function Backoffice() {
-  const { pillars, loading, error, addPillar, updatePillar, deletePillar, addQuestion, updateQuestion, deleteQuestion } = usePillars();
+  const [pillars, setPillars] = useState<Pillar[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [isNewQuestion, setIsNewQuestion] = useState(false);
   const [editingPillarId, setEditingPillarId] = useState<string | null>(null);
   const [editingPillarName, setEditingPillarName] = useState('');
-  const [deletingPillar, setDeletingPillar] = useState<Pillar | null>(null);
-  const [deletingQuestion, setDeletingQuestion] = useState<{pillar: Pillar; question: Question} | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const handleAddPillar = async () => {
+  useEffect(() => {
+    fetchPillars();
+  }, []);
+
+  const fetchPillars = async () => {
     try {
-      await addPillar({
-        name: `Pilar ${pillars.length + 1}`,
+      const { data: pillarsData, error: pillarsError } = await supabase
+        .from('pillars')
+        .select('*')
+        .order('order');
+
+      if (pillarsError) throw pillarsError;
+
+      const pillarsWithQuestions = await Promise.all(
+        pillarsData.map(async (pillar) => {
+          const { data: questionsData, error: questionsError } = await supabase
+            .from('questions')
+            .select('*')
+            .eq('pillar_id', pillar.id)
+            .order('order');
+
+          if (questionsError) throw questionsError;
+
+          return {
+            ...pillar,
+            questions: questionsData.map(q => ({
+              id: q.id,
+              text: q.text,
+              points: q.points,
+              positiveAnswer: q.positive_answer,
+              answerType: q.answer_type,
+              order: q.order
+            }))
+          };
+        })
+      );
+
+      setPillars(pillarsWithQuestions);
+      setLoading(false);
+    } catch (error) {
+      console.error('Erro ao buscar pilares:', error);
+      setLoading(false);
+    }
+  };
+
+  const addPillar = async () => {
+    try {
+      const newOrder = pillars.length + 1;
+      const { data, error } = await supabase
+        .from('pillars')
+        .insert([
+          {
+            name: `Pilar ${newOrder}`,
+            order: newOrder
+          }
+        ])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const newPillar: Pillar = {
+        id: data.id,
+        name: data.name,
+        order: data.order,
         questions: []
-      });
+      };
+
+      setPillars([...pillars, newPillar]);
     } catch (error) {
       console.error('Erro ao adicionar pilar:', error);
     }
   };
 
-  const handleDeletePillar = (pillar: Pillar) => {
-    setDeletingPillar(pillar);
-  };
-
-  const confirmDeletePillar = async () => {
-    if (!deletingPillar?.firebaseId) return;
+  const deletePillar = async (pillarId: string) => {
     try {
-      await deletePillar(deletingPillar.firebaseId);
-      setDeletingPillar(null);
+      const { error } = await supabase
+        .from('pillars')
+        .delete()
+        .eq('id', pillarId);
+
+      if (error) throw error;
+
+      setPillars(pillars.filter(p => p.id !== pillarId));
     } catch (error) {
       console.error('Erro ao excluir pilar:', error);
     }
   };
 
-  const handleDeleteQuestion = (pillar: Pillar, question: Question) => {
-    setDeletingQuestion({ pillar, question });
-  };
-
-  const confirmDeleteQuestion = async () => {
-    if (!deletingQuestion?.pillar.firebaseId) return;
+  const deleteQuestion = async (questionId: string) => {
     try {
-      await deleteQuestion(deletingQuestion.pillar.firebaseId, deletingQuestion.question.id);
-      setDeletingQuestion(null);
+      const { error } = await supabase
+        .from('questions')
+        .delete()
+        .eq('id', questionId);
+
+      if (error) throw error;
+
+      setPillars(pillars.map(pillar => ({
+        ...pillar,
+        questions: pillar.questions.filter(q => q.id !== questionId)
+      })));
     } catch (error) {
       console.error('Erro ao excluir pergunta:', error);
     }
   };
 
   const startEditingPillar = (pillar: Pillar) => {
-    setEditingPillarId(pillar.firebaseId || null);
+    setEditingPillarId(pillar.id);
     setEditingPillarName(pillar.name);
   };
 
   const savePillarName = async () => {
-    if (!editingPillarId) return;
+    if (editingPillarId === null) return;
+
     try {
-      await updatePillar(editingPillarId, { name: editingPillarName });
+      const { error } = await supabase
+        .from('pillars')
+        .update({ name: editingPillarName })
+        .eq('id', editingPillarId);
+
+      if (error) throw error;
+
+      setPillars(pillars.map(pillar =>
+        pillar.id === editingPillarId
+          ? { ...pillar, name: editingPillarName }
+          : pillar
+      ));
+
       setEditingPillarId(null);
       setEditingPillarName('');
     } catch (error) {
-      console.error('Erro ao atualizar nome do pilar:', error);
+      console.error('Erro ao salvar nome do pilar:', error);
     }
   };
 
-  const handleAddQuestion = (pillar: Pillar) => {
-    const questionNumber = pillar.questions.length + 1;
+  const addQuestion = (pillarId: string) => {
+    const pillar = pillars.find(p => p.id === pillarId);
+    if (!pillar) return;
+
+    const newOrder = pillar.questions.length + 1;
     const newQuestion: Question = {
-      id: `${pillar.id}.${questionNumber}`,
-      text: `Pergunta ${pillar.id}.${questionNumber}`,
+      id: '',
+      text: `Pergunta ${pillar.order}.${newOrder}`,
       points: 1,
       positiveAnswer: 'SIM',
-      answerType: 'BINARY'
+      answerType: 'BINARY',
+      order: newOrder
     };
     setIsNewQuestion(true);
-    setEditingQuestion(newQuestion);
+    setEditingQuestion({ ...newQuestion, id: pillarId });
   };
 
-  const handleEditQuestion = (question: Question) => {
+  const editQuestion = (question: Question) => {
     setIsNewQuestion(false);
     setEditingQuestion(question);
   };
 
   const saveQuestion = async () => {
     if (!editingQuestion) return;
-    
-    const pillarId = editingQuestion.id.split('.')[0];
-    const pillar = pillars.find(p => p.id.toString() === pillarId);
-    
-    if (!pillar?.firebaseId) return;
 
     try {
+      const pillarId = isNewQuestion ? editingQuestion.id : editingQuestion.id.split('.')[0];
+      const pillar = pillars.find(p => p.id === pillarId);
+      if (!pillar) return;
+
+      const questionData = {
+        pillar_id: pillarId,
+        text: editingQuestion.text,
+        points: editingQuestion.points,
+        positive_answer: editingQuestion.positiveAnswer,
+        answer_type: editingQuestion.answerType,
+        order: editingQuestion.order
+      };
+
       if (isNewQuestion) {
-        await addQuestion(pillar.firebaseId, editingQuestion);
+        const { data, error } = await supabase
+          .from('questions')
+          .insert([questionData])
+          .select()
+          .single();
+
+        if (error) throw error;
+
+        setPillars(pillars.map(p => {
+          if (p.id === pillarId) {
+            return {
+              ...p,
+              questions: [...p.questions, {
+                id: data.id,
+                text: data.text,
+                points: data.points,
+                positiveAnswer: data.positive_answer,
+                answerType: data.answer_type,
+                order: data.order
+              }]
+            };
+          }
+          return p;
+        }));
       } else {
-        await updateQuestion(pillar.firebaseId, editingQuestion.id, editingQuestion);
+        const { error } = await supabase
+          .from('questions')
+          .update(questionData)
+          .eq('id', editingQuestion.id);
+
+        if (error) throw error;
+
+        setPillars(pillars.map(p => {
+          if (p.id === pillarId) {
+            return {
+              ...p,
+              questions: p.questions.map(q =>
+                q.id === editingQuestion.id ? editingQuestion : q
+              )
+            };
+          }
+          return p;
+        }));
       }
+
       setEditingQuestion(null);
       setIsNewQuestion(false);
     } catch (error) {
@@ -107,18 +255,14 @@ function Backoffice() {
     }
   };
 
+  const getQuestionDisplayId = (pillar: Pillar, question: Question) => {
+    return `${pillar.order}.${question.order}`;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Loader2 size={40} className="animate-spin text-blue-500" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="bg-red-500/20 text-red-400 p-4 rounded-lg">
-        {error}
+        <div className="text-white">Carregando...</div>
       </div>
     );
   }
@@ -134,7 +278,7 @@ function Backoffice() {
         <div className="flex justify-between items-center mb-6">
           <h2 className="text-2xl font-semibold text-white">Pilares do Diagnóstico</h2>
           <button
-            onClick={handleAddPillar}
+            onClick={addPillar}
             className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
           >
             <Plus size={20} />
@@ -142,65 +286,6 @@ function Backoffice() {
           </button>
         </div>
 
-        {/* Modal de confirmação para excluir pilar */}
-        {deletingPillar && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-zinc-800 rounded-lg p-6 max-w-md w-full">
-              <div className="flex items-center gap-3 text-yellow-500 mb-4">
-                <AlertTriangle size={24} />
-                <h3 className="text-xl font-medium text-white">Confirmar Exclusão</h3>
-              </div>
-              <p className="text-gray-300 mb-6">
-                Tem certeza que deseja excluir o pilar "{deletingPillar.name}"? Esta ação não pode ser desfeita.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingPillar(null)}
-                  className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeletePillar}
-                  className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal de confirmação para excluir pergunta */}
-        {deletingQuestion && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-            <div className="bg-zinc-800 rounded-lg p-6 max-w-md w-full">
-              <div className="flex items-center gap-3 text-yellow-500 mb-4">
-                <AlertTriangle size={24} />
-                <h3 className="text-xl font-medium text-white">Confirmar Exclusão</h3>
-              </div>
-              <p className="text-gray-300 mb-6">
-                Tem certeza que deseja excluir a pergunta "{deletingQuestion.question.text}"? Esta ação não pode ser desfeita.
-              </p>
-              <div className="flex justify-end gap-3">
-                <button
-                  onClick={() => setDeletingQuestion(null)}
-                  className="px-4 py-2 text-gray-300 hover:text-white transition-colors"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={confirmDeleteQuestion}
-                  className="bg-red-600 hover:bg-red-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
-                >
-                  Excluir
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal de edição de pergunta */}
         {editingQuestion && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
             <div className="bg-zinc-800 rounded-lg p-6 max-w-md w-full">
@@ -298,9 +383,9 @@ function Backoffice() {
 
         <div className="space-y-6">
           {pillars.map(pillar => (
-            <div key={pillar.firebaseId} className="bg-zinc-800 rounded-lg p-6">
+            <div key={pillar.id} className="bg-zinc-800 rounded-lg p-6">
               <div className="flex justify-between items-center mb-4">
-                {editingPillarId === pillar.firebaseId ? (
+                {editingPillarId === pillar.id ? (
                   <div className="flex items-center gap-2">
                     <input
                       type="text"
@@ -318,34 +403,33 @@ function Backoffice() {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4">
                     <h3 className="text-xl font-medium text-white">
-                      {pillar.id}. {pillar.name}
+                      {pillar.order}. {pillar.name}
                     </h3>
-                    <button
-                      onClick={() => startEditingPillar(pillar)}
-                      className="text-gray-400 hover:text-white transition-colors"
-                    >
-                      <Pencil size={16} />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => startEditingPillar(pillar)}
+                        className="text-gray-400 hover:text-white transition-colors"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        onClick={() => deletePillar(pillar.id)}
+                        className="text-red-500 hover:text-red-400 transition-colors"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
                   </div>
                 )}
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleAddQuestion(pillar)}
-                    className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <PlusCircle size={20} />
-                    Adicionar Pergunta
-                  </button>
-                  <button
-                    onClick={() => handleDeletePillar(pillar)}
-                    className="bg-red-600 hover:bg-red-700 text-white font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
-                  >
-                    <Trash2 size={20} />
-                    Excluir Pilar
-                  </button>
-                </div>
+                <button
+                  onClick={() => addQuestion(pillar.id)}
+                  className="bg-green-600 hover:bg-green-700 text-white font-medium py-2 px-4 rounded-lg flex items-center gap-2 transition-colors"
+                >
+                  <PlusCircle size={20} />
+                  Adicionar Pergunta
+                </button>
               </div>
 
               {pillar.questions.length > 0 ? (
@@ -357,7 +441,7 @@ function Backoffice() {
                     >
                       <div className="flex items-start gap-4">
                         <span className="text-gray-300 font-medium w-[60px] flex-shrink-0">
-                          {question.id}
+                          {getQuestionDisplayId(pillar, question)}
                         </span>
                         <div className="flex-grow">
                           <div className="flex items-start justify-between gap-4">
@@ -366,14 +450,14 @@ function Backoffice() {
                             </span>
                             <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleEditQuestion(question)}
+                                onClick={() => editQuestion(question)}
                                 className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
                               >
                                 <Pencil size={16} />
                               </button>
                               <button
-                                onClick={() => handleDeleteQuestion(pillar, question)}
-                                className="text-red-400 hover:text-red-300 transition-colors flex-shrink-0"
+                                onClick={() => deleteQuestion(question.id)}
+                                className="text-red-500 hover:text-red-400 transition-colors flex-shrink-0"
                               >
                                 <Trash2 size={16} />
                               </button>

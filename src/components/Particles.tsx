@@ -261,7 +261,6 @@ const Particles: React.FC<ParticlesProps> = ({
         // create a new circle
         const newCircle = circleParams();
         drawCircle(newCircle);
-        // update the circle position
       }
     });
     window.requestAnimationFrame(animate);

@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import { User, AuthError } from '@supabase/supabase-js';
-import { supabase } from '../config/supabase';
+import { supabase } from '../lib/supabase';
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -23,40 +22,36 @@ export function useAuth() {
   }, []);
 
   const signIn = async (email: string, password: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
 
-      if (error) throw error;
-      return data.user;
-    } catch (error: any) {
-      if (error instanceof AuthError) {
-        if (error.message.includes('Invalid login credentials')) {
-          throw new Error('E-mail ou senha inválidos');
-        } else if (error.message.includes('Too many requests')) {
-          throw new Error('Muitas tentativas. Tente novamente mais tarde');
-        }
+    if (error) throw error;
+  };
+
+  const signUp = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        emailRedirectTo: `${window.location.origin}/auth/callback`
       }
-      throw new Error('Erro ao fazer login. Tente novamente');
-    }
+    });
+
+    if (error) throw error;
   };
 
   const signOut = async () => {
-    try {
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error) {
-      console.error('Erro ao sair:', error);
-      throw error;
-    }
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   };
 
   return {
     user,
     loading,
     signIn,
+    signUp,
     signOut
   };
 }
